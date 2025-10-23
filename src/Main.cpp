@@ -856,7 +856,7 @@ void handleTransmissionState()
 // Display hex dump of transmitted data if enabled
 #ifdef ENABLE_HEX_DUMP
 #if ENABLE_HEX_DUMP
-    printHexDump(txPacket, totalLength, 200);
+    printHexDump(txPacket, totalLength, HEX_DUMP_MAX_BYTES);
 #endif
 #endif
 
