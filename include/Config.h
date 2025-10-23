@@ -19,11 +19,11 @@
 
 // ==================== Timing Configuration ====================
 #define GGA_SEND_INTERVAL 10000    // Send GGA every 10 seconds (ms)
-#define GATHERING_DURATION 1000     // 1 second for data gathering (ms)
-#define TRANSMISSION_DURATION 1000 // 1 second for radio transmission (ms)
+#define GATHERING_DURATION 1000    // 1 second for data gathering (ms)
+#define TRANSMISSION_DURATION 1500 // 1 second for radio transmission (ms)
 
 // ==================== Radio Transmission Configuration ====================
-#define FIXED_PACKET_SIZE 1800 // Always transmit exactly 2000 bytes
+#define FIXED_PACKET_SIZE 2000 // Always transmit exactly 2000 bytes
 #define PADDING_BYTE 0xFF      // Byte used for padding (0xFF or 0x00)
 
 // ==================== RTCM Configuration ====================
@@ -46,16 +46,16 @@
 #define RTCM_MAX_MESSAGE_SIZE 512
 
 // ==================== Debug Configuration ====================
-#define ENABLE_HEX_DUMP true    // Enable hex dump of transmitted packets
-#define HEX_DUMP_MAX_BYTES 2000 // Maximum bytes to display in hex dump
+#define ENABLE_HEX_DUMP false   // Enable hex dump of transmitted packets
+#define HEX_DUMP_MAX_BYTES 200 // Maximum bytes to display in hex dump
 
 // ==================== OLED Display Configuration ====================
-#define OLED_SDA 21           // I2C SDA pin for TTGO T-Beam
-#define OLED_SCL 22           // I2C SCL pin for TTGO T-Beam
-#define OLED_RESET -1         // Reset pin (-1 if not used)
-#define OLED_ADDRESS 0x3C     // I2C address for SSD1306
-#define OLED_WIDTH 128        // OLED display width
-#define OLED_HEIGHT 64        // OLED display height
-#define SPLASH_DURATION 2000  // Splash screen duration (ms)
+#define OLED_SDA 21          // I2C SDA pin for TTGO T-Beam
+#define OLED_SCL 22          // I2C SCL pin for TTGO T-Beam
+#define OLED_RESET -1        // Reset pin (-1 if not used)
+#define OLED_ADDRESS 0x3C    // I2C address for SSD1306
+#define OLED_WIDTH 128       // OLED display width
+#define OLED_HEIGHT 64       // OLED display height
+#define SPLASH_DURATION 2000 // Splash screen duration (ms)
 
 #endif // CONFIG_H
