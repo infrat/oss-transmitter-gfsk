@@ -8,18 +8,90 @@
   - State machine: 2s GATHERING + 1s TRANSMISSION cycle
   - GGA position transmission every 10s
   - FSK radio transmission of RTCM data
+  - OLED SSD1306 display support
 
   Hardware: TTGO T-Beam v2
   Radio: SX1276 (FSK mode)
+  Display: SSD1306 128x64 OLED
 */
 
 #include <Arduino.h>
 #include <RadioLib.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <Wire.h>
+#include <SSD1306Wire.h>
 
 // IMPORTANT: config.h must be in the same directory as main.cpp (src/)
 #include "Config.h"
+
+// ==================== SPLASH SCREEN BITMAP ====================
+// 64x64 satellite/antenna icon (you can replace this later)
+const uint8_t splashBitmap[] PROGMEM = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x1C, 0x38, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x3E, 0x7C, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x7F, 0xFE, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x01, 0xFF, 0xFF, 0x80, 0x00, 0x00,
+  0x00, 0x00, 0x03, 0xFF, 0xFF, 0xC0, 0x00, 0x00,
+  0x00, 0x00, 0x07, 0xFF, 0xFF, 0xE0, 0x00, 0x00,
+  0x00, 0x00, 0x0F, 0xFF, 0xFF, 0xF0, 0x00, 0x00,
+  0x00, 0x00, 0x1F, 0xF0, 0x0F, 0xF8, 0x00, 0x00,
+  0x00, 0x00, 0x3F, 0xC0, 0x03, 0xFC, 0x00, 0x00,
+  0x00, 0x00, 0x7F, 0x80, 0x01, 0xFE, 0x00, 0x00,
+  0x00, 0x00, 0xFF, 0x00, 0x00, 0xFF, 0x00, 0x00,
+  0x00, 0x00, 0xFE, 0x00, 0x00, 0x7F, 0x00, 0x00,
+  0x00, 0x01, 0xFE, 0x00, 0x00, 0x7F, 0x80, 0x00,
+  0x00, 0x01, 0xFC, 0x00, 0x00, 0x3F, 0x80, 0x00,
+  0x00, 0x03, 0xFC, 0x00, 0x00, 0x3F, 0xC0, 0x00,
+  0x00, 0x03, 0xF8, 0x00, 0x00, 0x1F, 0xC0, 0x00,
+  0x00, 0x07, 0xF8, 0x7F, 0xFE, 0x1F, 0xE0, 0x00,
+  0x00, 0x07, 0xF0, 0xFF, 0xFF, 0x0F, 0xE0, 0x00,
+  0x00, 0x0F, 0xF1, 0xFF, 0xFF, 0x8F, 0xF0, 0x00,
+  0x00, 0x0F, 0xE1, 0xFC, 0x3F, 0x87, 0xF0, 0x00,
+  0x00, 0x1F, 0xE3, 0xF0, 0x0F, 0xC7, 0xF8, 0x00,
+  0x00, 0x1F, 0xC3, 0xE0, 0x07, 0xC3, 0xF8, 0x00,
+  0x00, 0x3F, 0xC7, 0xC0, 0x03, 0xE3, 0xFC, 0x00,
+  0x00, 0x3F, 0x87, 0xC0, 0x03, 0xE1, 0xFC, 0x00,
+  0x00, 0x7F, 0x8F, 0x80, 0x01, 0xF1, 0xFE, 0x00,
+  0x00, 0x7F, 0x0F, 0x80, 0x01, 0xF0, 0xFE, 0x00,
+  0x00, 0xFF, 0x0F, 0x80, 0x01, 0xF0, 0xFF, 0x00,
+  0x00, 0xFE, 0x0F, 0x80, 0x01, 0xF0, 0x7F, 0x00,
+  0x00, 0xFE, 0x0F, 0x80, 0x01, 0xF0, 0x7F, 0x00,
+  0x01, 0xFC, 0x0F, 0x80, 0x01, 0xF0, 0x3F, 0x80,
+  0x01, 0xF8, 0x07, 0xC0, 0x03, 0xE0, 0x1F, 0x80,
+  0x01, 0xF8, 0x07, 0xC0, 0x03, 0xE0, 0x1F, 0x80,
+  0x01, 0xF0, 0x03, 0xE0, 0x07, 0xC0, 0x0F, 0x80,
+  0x01, 0xE0, 0x03, 0xF0, 0x0F, 0xC0, 0x07, 0x80,
+  0x01, 0xC0, 0x01, 0xFC, 0x3F, 0x80, 0x03, 0x80,
+  0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x7F, 0xFE, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x3F, 0xFC, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x0F, 0xF0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x07, 0xE0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x07, 0xE0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x0F, 0xF0, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x1F, 0xF8, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x3F, 0xFC, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x3F, 0xFC, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
 
 // ==================== PIN DEFINITIONS ====================
 
@@ -368,6 +440,19 @@ bool isFilteredMessageType(uint16_t messageType)
   return rtcmBuffer.isFilteredType(messageType);
 }
 
+// ==================== OLED DISPLAY ====================
+
+SSD1306Wire display(OLED_ADDRESS, OLED_SDA, OLED_SCL);
+
+// Display update tracking
+unsigned long lastDisplayUpdate = 0;
+#define DISPLAY_UPDATE_INTERVAL 500 // Update display every 500ms
+
+// RTCM messages per second tracking
+uint32_t rtcmMessagesLastSecond = 0;
+uint32_t rtcmMessagesCurrentSecond = 0;
+unsigned long lastSecondTimestamp = 0;
+
 // ==================== STATISTICS ====================
 
 uint32_t packetsTransmitted = 0;
@@ -582,6 +667,7 @@ void processNTRIPData()
               Serial.printf("[RTCM] Buffered message type %d, length %d bytes\n",
                             msg.messageType, totalSize);
               rtcmMessagesReceived++;
+              rtcmMessagesCurrentSecond++; // Track for display
             }
             else
             {
@@ -699,6 +785,119 @@ void printStats()
     Serial.printf("Success rate: %.1f%%\n", successRate);
   }
   Serial.println(F("==================\n"));
+}
+
+// ==================== OLED DISPLAY FUNCTIONS ====================
+
+// Initialize OLED display
+void initDisplay()
+{
+  display.init();
+  display.flipScreenVertically();
+  display.setFont(ArialMT_Plain_10);
+}
+
+// Show splash screen
+void showSplashScreen()
+{
+  display.clear();
+
+  // Draw bitmap centered (64x64 bitmap on 128x64 screen)
+  display.drawXbm(32, 0, 64, 64, splashBitmap);
+
+  display.display();
+}
+
+// Show error message
+void showError(const char* title, const char* message)
+{
+  display.clear();
+
+  display.setFont(ArialMT_Plain_16);
+  display.setTextAlignment(TEXT_ALIGN_CENTER);
+  display.drawString(64, 10, title);
+
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(64, 35, message);
+
+  display.display();
+}
+
+// Show status message during initialization
+void showStatus(const char* message)
+{
+  display.clear();
+
+  display.setFont(ArialMT_Plain_10);
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(0, 0, "RTCM Transmitter");
+  display.drawString(0, 15, "Initializing...");
+  display.drawString(0, 35, message);
+
+  display.display();
+}
+
+// Update statistics display
+void updateStatsDisplay()
+{
+  // Calculate RTCM messages per second
+  if (millis() - lastSecondTimestamp >= 1000)
+  {
+    rtcmMessagesLastSecond = rtcmMessagesCurrentSecond;
+    rtcmMessagesCurrentSecond = 0;
+    lastSecondTimestamp = millis();
+  }
+
+  display.clear();
+
+  // Title
+  display.setFont(ArialMT_Plain_10);
+  display.setTextAlignment(TEXT_ALIGN_CENTER);
+  display.drawString(64, 0, "RTCM Transmitter");
+
+  // Status line
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  const char* stateStr = "UNKNOWN";
+  if (currentState == STATE_GATHERING)
+    stateStr = "GATHERING";
+  else if (currentState == STATE_TRANSMISSION)
+    stateStr = "TRANSMIT";
+  else if (currentState == STATE_ERROR)
+    stateStr = "ERROR";
+
+  display.drawString(0, 15, "Status:");
+  display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  display.drawString(128, 15, stateStr);
+
+  // RTCM messages per second
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(0, 28, "RTCM/s:");
+  display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  char rtcmRate[16];
+  snprintf(rtcmRate, sizeof(rtcmRate), "%u", rtcmMessagesLastSecond);
+  display.drawString(128, 28, rtcmRate);
+
+  // Total packets transmitted
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(0, 41, "TX Packets:");
+  display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  char txPackets[16];
+  snprintf(txPackets, sizeof(txPackets), "%u", packetsTransmitted);
+  display.drawString(128, 41, txPackets);
+
+  // WiFi status indicator
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(0, 54, "WiFi:");
+  display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  display.drawString(50, 54, WiFi.status() == WL_CONNECTED ? "OK" : "ERR");
+
+  // NTRIP status indicator
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(60, 54, "NTRIP:");
+  display.setTextAlignment(TEXT_ALIGN_RIGHT);
+  display.drawString(128, 54, ntripConnected ? "OK" : "ERR");
+
+  display.display();
 }
 
 // ==================== WIFI SETUP ====================
@@ -948,13 +1147,22 @@ void setup()
   Serial.println(F("  NTRIP + FSK Radio Transmitter"));
   Serial.println(F("========================================"));
 
+  // Initialize OLED display
+  initDisplay();
+
+  // Show splash screen
+  showSplashScreen();
+  delay(SPLASH_DURATION); // Show splash for configured duration
+
   // Initialize RTCM buffer
   rtcmBuffer.init();
 
   // Connect to WiFi
+  showStatus("Connecting WiFi...");
   if (!connectWiFi())
   {
     Serial.println(F("[ERROR] WiFi connection failed! Halting."));
+    showError("ERROR", "WiFi Failed!");
     currentState = STATE_ERROR;
     while (true)
     {
@@ -963,9 +1171,11 @@ void setup()
   }
 
   // Connect to NTRIP
+  showStatus("Connecting NTRIP...");
   if (!connectNTRIP())
   {
     Serial.println(F("[ERROR] NTRIP connection failed! Halting."));
+    showError("ERROR", "NTRIP Failed!");
     currentState = STATE_ERROR;
     while (true)
     {
@@ -974,6 +1184,7 @@ void setup()
   }
 
   // Initialize radio
+  showStatus("Initializing Radio...");
   Serial.print(F("[SX1276] Initializing ... "));
   int state = radio.beginFSK(FREQUENCY);
 
@@ -984,6 +1195,7 @@ void setup()
   else
   {
     Serial.printf("failed, code %d\n", state);
+    showError("ERROR", "Radio Failed!");
     currentState = STATE_ERROR;
     while (true)
     {
@@ -1003,6 +1215,11 @@ void setup()
   // Start state machine
   enterState(STATE_GATHERING);
   lastGGASendTime = millis();
+  lastSecondTimestamp = millis();
+
+  // Show ready message briefly
+  showStatus("Ready!");
+  delay(1000);
 }
 
 void loop()
@@ -1011,6 +1228,7 @@ void loop()
   if (WiFi.status() != WL_CONNECTED)
   {
     Serial.println(F("[ERROR] WiFi disconnected!"));
+    showStatus("WiFi reconnecting...");
     connectWiFi();
   }
 
@@ -1018,6 +1236,7 @@ void loop()
   {
     Serial.println(F("[ERROR] NTRIP disconnected!"));
     ntripConnected = false;
+    showStatus("NTRIP reconnecting...");
     connectNTRIP();
   }
 
@@ -1039,6 +1258,13 @@ void loop()
 
   default:
     break;
+  }
+
+  // Update OLED display periodically
+  if (currentState != STATE_ERROR && millis() - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL)
+  {
+    updateStatsDisplay();
+    lastDisplayUpdate = millis();
   }
 
   // Print stats every 30 seconds

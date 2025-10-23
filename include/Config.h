@@ -49,4 +49,13 @@
 #define ENABLE_HEX_DUMP true    // Enable hex dump of transmitted packets
 #define HEX_DUMP_MAX_BYTES 2000 // Maximum bytes to display in hex dump
 
+// ==================== OLED Display Configuration ====================
+#define OLED_SDA 21           // I2C SDA pin for TTGO T-Beam
+#define OLED_SCL 22           // I2C SCL pin for TTGO T-Beam
+#define OLED_RESET -1         // Reset pin (-1 if not used)
+#define OLED_ADDRESS 0x3C     // I2C address for SSD1306
+#define OLED_WIDTH 128        // OLED display width
+#define OLED_HEIGHT 64        // OLED display height
+#define SPLASH_DURATION 2000  // Splash screen duration (ms)
+
 #endif // CONFIG_H
