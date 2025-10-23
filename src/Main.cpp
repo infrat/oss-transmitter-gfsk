@@ -1159,6 +1159,11 @@ void setup()
     }
   }
 
+  // Send initial GGA immediately to start receiving RTCM data
+  Serial.println(F("[NTRIP] Sending initial GGA position..."));
+  sendGGA();
+  lastGGASendTime = millis();
+
   // Initialize radio
   showStatus("Initializing Radio...");
   Serial.print(F("[SX1276] Initializing ... "));
@@ -1191,7 +1196,6 @@ void setup()
 
   // Start state machine - wait for first RTCM message
   enterState(STATE_WAITING_FOR_FIRST_RTCM);
-  lastGGASendTime = millis();
   lastSecondTimestamp = millis();
 
   // Show ready message briefly
