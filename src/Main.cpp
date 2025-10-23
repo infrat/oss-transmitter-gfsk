@@ -48,6 +48,7 @@
 enum SystemState
 {
   STATE_INIT,
+  STATE_WAITING_FOR_FIRST_RTCM,
   STATE_GATHERING,
   STATE_TRANSMISSION,
   STATE_ERROR
@@ -56,6 +57,7 @@ enum SystemState
 SystemState currentState = STATE_INIT;
 unsigned long stateStartTime = 0;
 unsigned long lastGGASendTime = 0;
+bool firstRTCMReceived = false;
 
 // ==================== RTCM BUFFER ====================
 
@@ -605,6 +607,13 @@ void processNTRIPData()
                             msg.messageType, totalSize);
               rtcmMessagesReceived++;
               rtcmRxCurrentSecond++; // Track incoming messages for display
+
+              // Mark that we received first RTCM message
+              if (!firstRTCMReceived)
+              {
+                firstRTCMReceived = true;
+                Serial.println(F("[RTCM] First RTCM message received - ready to start transmission cycles!"));
+              }
             }
             else
             {
@@ -797,7 +806,9 @@ void updateStatsDisplay()
   // Status line
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   const char* stateStr = "UNKNOWN";
-  if (currentState == STATE_GATHERING)
+  if (currentState == STATE_WAITING_FOR_FIRST_RTCM)
+    stateStr = "WAITING";
+  else if (currentState == STATE_GATHERING)
     stateStr = "GATHERING";
   else if (currentState == STATE_TRANSMISSION)
     stateStr = "TRANSMIT";
@@ -880,6 +891,9 @@ void enterState(SystemState newState)
 
   switch (newState)
   {
+  case STATE_WAITING_FOR_FIRST_RTCM:
+    Serial.println(F("\n>>> STATE: WAITING FOR FIRST RTCM"));
+    break;
   case STATE_GATHERING:
     Serial.println(F("\n>>> STATE: GATHERING (2s)"));
     break;
@@ -891,6 +905,26 @@ void enterState(SystemState newState)
     break;
   default:
     break;
+  }
+}
+
+void handleWaitingForFirstRTCMState()
+{
+  // Check if we need to send GGA
+  if (millis() - lastGGASendTime >= GGA_SEND_INTERVAL)
+  {
+    sendGGA();
+    lastGGASendTime = millis();
+  }
+
+  // Process incoming NTRIP data
+  processNTRIPData();
+
+  // Check if we received first RTCM message
+  if (firstRTCMReceived)
+  {
+    Serial.println(F("[STATE] First RTCM received, starting transmission cycles!"));
+    enterState(STATE_GATHERING);
   }
 }
 
@@ -1125,6 +1159,11 @@ void setup()
     }
   }
 
+  // Send initial GGA immediately to start receiving RTCM data
+  Serial.println(F("[NTRIP] Sending initial GGA position..."));
+  sendGGA();
+  lastGGASendTime = millis();
+
   // Initialize radio
   showStatus("Initializing Radio...");
   Serial.print(F("[SX1276] Initializing ... "));
@@ -1153,14 +1192,14 @@ void setup()
                 GATHERING_DURATION / 1000, TRANSMISSION_DURATION / 1000);
   Serial.printf("[INFO] GGA send interval: %ds\n", GGA_SEND_INTERVAL / 1000);
   Serial.println();
+  Serial.println(F("[INFO] Waiting for first RTCM message before starting transmission cycles..."));
 
-  // Start state machine
-  enterState(STATE_GATHERING);
-  lastGGASendTime = millis();
+  // Start state machine - wait for first RTCM message
+  enterState(STATE_WAITING_FOR_FIRST_RTCM);
   lastSecondTimestamp = millis();
 
   // Show ready message briefly
-  showStatus("Ready!");
+  showStatus("Waiting for RTCM...");
   delay(1000);
 }
 
@@ -1185,6 +1224,10 @@ void loop()
   // Run state machine
   switch (currentState)
   {
+  case STATE_WAITING_FOR_FIRST_RTCM:
+    handleWaitingForFirstRTCMState();
+    break;
+
   case STATE_GATHERING:
     handleGatheringState();
     break;
