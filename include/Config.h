@@ -8,8 +8,7 @@
 #define WIFI_TIMEOUT_MS 20000 // 20 seconds timeout for WiFi connection
 
 // ==================== NTRIP Configuration ====================
-#define NTRIP_SERVER "91.198.76.2"
-#define NTRIP_PORT 2101
+
 #define NTRIP_TIMEOUT_MS 10000
 #define NTRIP_RECONNECT_INTERVAL_MS 30000
 // ==================== Location Configuration ====================
