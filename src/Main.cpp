@@ -448,10 +448,14 @@ SSD1306Wire display(OLED_ADDRESS, OLED_SDA, OLED_SCL);
 unsigned long lastDisplayUpdate = 0;
 #define DISPLAY_UPDATE_INTERVAL 500 // Update display every 500ms
 
-// RTCM messages per second tracking
-uint32_t rtcmMessagesLastSecond = 0;
-uint32_t rtcmMessagesCurrentSecond = 0;
+// RTCM messages per second tracking (incoming from NTRIP)
+uint32_t rtcmRxLastSecond = 0;
+uint32_t rtcmRxCurrentSecond = 0;
 unsigned long lastSecondTimestamp = 0;
+
+// RTCM messages per second tracking (outgoing to radio, after filtering)
+uint32_t rtcmTxLastSecond = 0;
+uint32_t rtcmTxCurrentSecond = 0;
 
 // ==================== STATISTICS ====================
 
@@ -667,7 +671,7 @@ void processNTRIPData()
               Serial.printf("[RTCM] Buffered message type %d, length %d bytes\n",
                             msg.messageType, totalSize);
               rtcmMessagesReceived++;
-              rtcmMessagesCurrentSecond++; // Track for display
+              rtcmRxCurrentSecond++; // Track incoming messages for display
             }
             else
             {
@@ -840,11 +844,13 @@ void showStatus(const char* message)
 // Update statistics display
 void updateStatsDisplay()
 {
-  // Calculate RTCM messages per second
+  // Calculate RTCM messages per second (both RX and TX)
   if (millis() - lastSecondTimestamp >= 1000)
   {
-    rtcmMessagesLastSecond = rtcmMessagesCurrentSecond;
-    rtcmMessagesCurrentSecond = 0;
+    rtcmRxLastSecond = rtcmRxCurrentSecond;
+    rtcmRxCurrentSecond = 0;
+    rtcmTxLastSecond = rtcmTxCurrentSecond;
+    rtcmTxCurrentSecond = 0;
     lastSecondTimestamp = millis();
   }
 
@@ -869,33 +875,33 @@ void updateStatsDisplay()
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
   display.drawString(128, 15, stateStr);
 
-  // RTCM messages per second
+  // RTCM RX (incoming from NTRIP)
   display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(0, 28, "RTCM/s:");
+  display.drawString(0, 28, "RX:");
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
-  char rtcmRate[16];
-  snprintf(rtcmRate, sizeof(rtcmRate), "%u", rtcmMessagesLastSecond);
-  display.drawString(128, 28, rtcmRate);
+  char rxRate[16];
+  snprintf(rxRate, sizeof(rxRate), "%u msg/s", rtcmRxLastSecond);
+  display.drawString(128, 28, rxRate);
 
-  // Total packets transmitted
+  // RTCM TX (outgoing to radio, filtered)
   display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(0, 41, "TX Packets:");
+  display.drawString(0, 38, "TX:");
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
-  char txPackets[16];
-  snprintf(txPackets, sizeof(txPackets), "%u", packetsTransmitted);
-  display.drawString(128, 41, txPackets);
+  char txRate[16];
+  snprintf(txRate, sizeof(txRate), "%u msg/s", rtcmTxLastSecond);
+  display.drawString(128, 38, txRate);
 
   // WiFi status indicator
   display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(0, 54, "WiFi:");
+  display.drawString(0, 51, "WiFi:");
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
-  display.drawString(50, 54, WiFi.status() == WL_CONNECTED ? "OK" : "ERR");
+  display.drawString(50, 51, WiFi.status() == WL_CONNECTED ? "OK" : "ERR");
 
   // NTRIP status indicator
   display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(60, 54, "NTRIP:");
+  display.drawString(60, 51, "NTRIP:");
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
-  display.drawString(128, 54, ntripConnected ? "OK" : "ERR");
+  display.drawString(128, 51, ntripConnected ? "OK" : "ERR");
 
   display.display();
 }
@@ -998,6 +1004,9 @@ void handleTransmissionState()
     messageCount = rtcmBuffer.getAllMessagesSorted(messagesToSend, maxMessages);
 
     Serial.printf("[TX] Preparing %d RTCM messages for transmission\n", messageCount);
+
+    // Track outgoing messages for display statistics
+    rtcmTxCurrentSecond += messageCount;
 
     // Calculate total RTCM data size
     uint32_t rtcmDataSize = 0;
