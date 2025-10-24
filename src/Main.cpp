@@ -1000,9 +1000,6 @@ void handleTransmissionState()
 
     Serial.printf("[TX] Preparing %d RTCM messages for transmission\n", messageCount);
 
-    // Track outgoing messages for display statistics
-    rtcmTxCurrentSecond += messageCount;
-
     // Calculate total RTCM data size
     uint32_t rtcmDataSize = 0;
     for (uint16_t i = 0; i < messageCount; i++)
@@ -1029,23 +1026,54 @@ void handleTransmissionState()
       return;
     }
 
-    // Copy all RTCM messages into transmission buffer (in priority order)
+    // Copy RTCM messages into transmission buffer (in priority order)
+    // Protection: only copy messages that fit within FIXED_PACKET_SIZE
     uint32_t offset = 0;
+    uint16_t messagesCopied = 0;
+    uint16_t messagesDropped = 0;
+
     for (uint16_t i = 0; i < messageCount; i++)
     {
-      memcpy(txPacket + offset, messagesToSend[i].data, messagesToSend[i].length);
-      int priority = getRTCMPriority(messagesToSend[i].messageType);
-      Serial.printf("[TX] Message %d/%d: type %d, priority %d, %d bytes, timestamp %lu ms\n",
-                    i + 1, messageCount,
-                    messagesToSend[i].messageType,
-                    priority,
-                    messagesToSend[i].length,
-                    messagesToSend[i].timestamp);
-      offset += messagesToSend[i].length;
+      // Check if this message would fit in the remaining buffer space
+      if (offset + messagesToSend[i].length <= FIXED_PACKET_SIZE)
+      {
+        memcpy(txPacket + offset, messagesToSend[i].data, messagesToSend[i].length);
+        int priority = getRTCMPriority(messagesToSend[i].messageType);
+        Serial.printf("[TX] Message %d/%d: type %d, priority %d, %d bytes, timestamp %lu ms\n",
+                      messagesCopied + 1, messageCount,
+                      messagesToSend[i].messageType,
+                      priority,
+                      messagesToSend[i].length,
+                      messagesToSend[i].timestamp);
+        offset += messagesToSend[i].length;
+        messagesCopied++;
+      }
+      else
+      {
+        // Buffer full - drop remaining messages (lower priority ones)
+        int priority = getRTCMPriority(messagesToSend[i].messageType);
+        Serial.printf("[TX] WARNING: Dropped message %d: type %d, priority %d, %d bytes (buffer full)\n",
+                      i + 1,
+                      messagesToSend[i].messageType,
+                      priority,
+                      messagesToSend[i].length);
+        messagesDropped++;
+      }
     }
 
+    if (messagesDropped > 0)
+    {
+      Serial.printf("[TX] Buffer overflow protection: %d messages copied, %d messages dropped\n",
+                    messagesCopied, messagesDropped);
+    }
+
+    // Track outgoing messages for display statistics (only actually transmitted messages)
+    rtcmTxCurrentSecond += messagesCopied;
+
     // Add padding to reach exactly FIXED_PACKET_SIZE
-    uint32_t paddingSize = FIXED_PACKET_SIZE - rtcmDataSize;
+    // Use offset (actual copied data) instead of rtcmDataSize
+    uint32_t actualDataSize = offset;
+    uint32_t paddingSize = FIXED_PACKET_SIZE - actualDataSize;
     if (paddingSize > 0)
     {
       memset(txPacket + offset, PADDING_BYTE, paddingSize); // Padding from config.h
@@ -1056,7 +1084,7 @@ void handleTransmissionState()
     remLength = totalLength;
 
     Serial.printf("[TX] Starting transmission of %d bytes (RTCM: %u, Padding: %u)\n",
-                  totalLength, rtcmDataSize, paddingSize);
+                  totalLength, actualDataSize, paddingSize);
 
 // Display hex dump of transmitted data if enabled
 #ifdef ENABLE_HEX_DUMP
