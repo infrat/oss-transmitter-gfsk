@@ -3,6 +3,24 @@
 
 #include "Secrets.h"
 
+// ==================== PIN DEFINITIONS ====================
+
+// TTGO LoRa32 v2.1 / T-Beam pin definitions
+#define SS 18   // GPIO18 -- SX1276's CS
+#define RST 14  // GPIO14 -- SX1276's RESET
+#define DI0 26  // GPIO26 -- SX1276's IRQ(Interrupt Request)
+#define DIO1 33 // GPIO33 -- SX1276's DIO1
+
+// ==================== RADIO CONFIGURATION ====================
+
+#define RADIO_FREQUENCY 433.0                   // MHz
+#define RADIO_BITRATE 9.6                       // kbps
+#define RADIO_FREQ_DEVIATION 10.0               // kHz frequency deviation
+#define RADIO_RX_BANDWIDTH 39.0                 // kHz
+#define RADIO_OUTPUT_POWER 20  
+#define RADIO_PREAMBLE_LENGTH 48                // bits
+#define RADIO_DATA_SHAPING RADIOLIB_SHAPING_0_3 // bits
+
 // ==================== WiFi Configuration ====================
 
 #define WIFI_TIMEOUT_MS 20000 // 20 seconds timeout for WiFi connection
@@ -44,43 +62,43 @@
 
 // RTCM message priorities for RTK Fix - lower number = higher priority
 // Critical for proper RTK positioning - messages must arrive in correct order
-#define RTCM_MESSAGE_PRIORITIES {           \
+#define RTCM_MESSAGE_PRIORITIES {                                  \
     {1005, 1}, /* Station position (ARP) without antenna height */ \
-    {1006, 1}, /* Station position (ARP) with antenna height */ \
-    {1007, 2}, /* Antenna descriptor */ \
-    {1008, 2}, /* Antenna descriptor and serial number */ \
-    {1033, 3}, /* Receiver and antenna descriptors */ \
-    {1230, 4}, /* GLONASS code-phase biases */ \
-    \
-    {1074, 10}, /* GPS MSM4 */ \
-    {1075, 10}, /* GPS MSM5 */ \
-    {1076, 10}, /* GPS MSM6 */ \
-    {1077, 10}, /* GPS MSM7 */ \
-    \
-    {1084, 20}, /* GLONASS MSM4 */ \
-    {1085, 20}, /* GLONASS MSM5 */ \
-    {1086, 20}, /* GLONASS MSM6 */ \
-    {1087, 20}, /* GLONASS MSM7 */ \
-    \
-    {1094, 30}, /* Galileo MSM4 */ \
-    {1095, 30}, /* Galileo MSM5 */ \
-    {1096, 30}, /* Galileo MSM6 */ \
-    {1097, 30}, /* Galileo MSM7 */ \
-    \
-    {1124, 40}, /* BeiDou MSM4 */ \
-    {1125, 40}, /* BeiDou MSM5 */ \
-    {1126, 40}, /* BeiDou MSM6 */ \
-    {1127, 40}, /* BeiDou MSM7 */ \
-    \
-    {1114, 50}, /* QZSS MSM4 */ \
-    {1115, 50}, /* QZSS MSM5 */ \
-    {1116, 50}, /* QZSS MSM6 */ \
-    {1117, 50}, /* QZSS MSM7 */ \
-    \
-    {1019, 60}, /* GPS ephemeris */ \
-    {1020, 61}, /* GLONASS ephemeris */ \
-    {1045, 62}, /* Galileo F/NAV ephemeris */ \
-    {1046, 63}  /* Galileo I/NAV ephemeris */ \
+    {1006, 1}, /* Station position (ARP) with antenna height */    \
+    {1007, 2}, /* Antenna descriptor */                            \
+    {1008, 2}, /* Antenna descriptor and serial number */          \
+    {1033, 3}, /* Receiver and antenna descriptors */              \
+    {1230, 4}, /* GLONASS code-phase biases */                     \
+                                                                   \
+    {1074, 10}, /* GPS MSM4 */                                     \
+    {1075, 10}, /* GPS MSM5 */                                     \
+    {1076, 10}, /* GPS MSM6 */                                     \
+    {1077, 10}, /* GPS MSM7 */                                     \
+                                                                   \
+    {1084, 20}, /* GLONASS MSM4 */                                 \
+    {1085, 20}, /* GLONASS MSM5 */                                 \
+    {1086, 20}, /* GLONASS MSM6 */                                 \
+    {1087, 20}, /* GLONASS MSM7 */                                 \
+                                                                   \
+    {1094, 30}, /* Galileo MSM4 */                                 \
+    {1095, 30}, /* Galileo MSM5 */                                 \
+    {1096, 30}, /* Galileo MSM6 */                                 \
+    {1097, 30}, /* Galileo MSM7 */                                 \
+                                                                   \
+    {1124, 40}, /* BeiDou MSM4 */                                  \
+    {1125, 40}, /* BeiDou MSM5 */                                  \
+    {1126, 40}, /* BeiDou MSM6 */                                  \
+    {1127, 40}, /* BeiDou MSM7 */                                  \
+                                                                   \
+    {1114, 50}, /* QZSS MSM4 */                                    \
+    {1115, 50}, /* QZSS MSM5 */                                    \
+    {1116, 50}, /* QZSS MSM6 */                                    \
+    {1117, 50}, /* QZSS MSM7 */                                    \
+                                                                   \
+    {1019, 60}, /* GPS ephemeris */                                \
+    {1020, 61}, /* GLONASS ephemeris */                            \
+    {1045, 62}, /* Galileo F/NAV ephemeris */                      \
+    {1046, 63}  /* Galileo I/NAV ephemeris */                      \
 }
 
 // Maximum size of a single RTCM message (bytes)

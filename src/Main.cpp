@@ -26,23 +26,6 @@
 #include "Config.h"
 #include "SplashBitmap.h"
 
-// ==================== PIN DEFINITIONS ====================
-
-// TTGO LoRa32 v2.1 / T-Beam pin definitions
-#define SS 18   // GPIO18 -- SX1276's CS
-#define RST 14  // GPIO14 -- SX1276's RESET
-#define DI0 26  // GPIO26 -- SX1276's IRQ(Interrupt Request)
-#define DIO1 33 // GPIO33 -- SX1276's DIO1
-
-// ==================== RADIO CONFIGURATION ====================
-
-#define FREQUENCY 433.0    // MHz
-#define BITRATE 9.6        // kbps
-#define FREQ_DEV 5.0       // kHz frequency deviation
-#define RX_BANDWIDTH 25    // kHz
-#define OUTPUT_POWER 20    // dBm
-#define PREAMBLE_LENGTH 48 // bits
-
 // ==================== STATE MACHINE ====================
 
 enum SystemState
@@ -317,9 +300,9 @@ public:
       {
         int priority_j = getRTCMPriority(output[j].messageType);
         int priority_j1 = getRTCMPriority(output[j + 1].messageType);
-        
+
         bool shouldSwap = false;
-        
+
         // First compare by priority (lower number = higher priority)
         if (priority_j > priority_j1)
         {
@@ -330,7 +313,7 @@ public:
         {
           shouldSwap = true;
         }
-        
+
         if (shouldSwap)
         {
           // Swap
@@ -1149,12 +1132,12 @@ void setupRadio()
 {
   Serial.print(F("[SX1276] Setting FSK parameters ... "));
 
-  radio.setBitRate(BITRATE);
-  radio.setFrequencyDeviation(FREQ_DEV);
-  radio.setRxBandwidth(RX_BANDWIDTH);
-  radio.setOutputPower(OUTPUT_POWER);
-  radio.setPreambleLength(PREAMBLE_LENGTH);
-  radio.setDataShaping(RADIOLIB_SHAPING_0_5);
+  radio.setBitRate(RADIO_BITRATE);
+  radio.setFrequencyDeviation(RADIO_FREQ_DEVIATION);
+  radio.setRxBandwidth(RADIO_RX_BANDWIDTH);
+  radio.setOutputPower(RADIO_OUTPUT_POWER);
+  radio.setPreambleLength(RADIO_PREAMBLE_LENGTH);
+  radio.setDataShaping(RADIO_DATA_SHAPING);
 
   // Set sync word for packet synchronization
   radio.setFifoEmptyAction(fifoAdd);
@@ -1214,7 +1197,7 @@ void setup()
   // Initialize radio
   showStatus("Initializing Radio...");
   Serial.print(F("[SX1276] Initializing ... "));
-  int state = radio.beginFSK(FREQUENCY);
+  int state = radio.beginFSK(RADIO_FREQUENCY);
 
   if (state == RADIOLIB_ERR_NONE)
   {
