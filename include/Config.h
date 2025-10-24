@@ -13,8 +13,8 @@
 #define NTRIP_RECONNECT_INTERVAL_MS 30000
 // ==================== Location Configuration ====================
 // Katowice, Poland coordinates (example location for GGA)
-#define LOCATION_LAT 50.2649 // Latitude (decimal degrees)
-#define LOCATION_LON 19.0238 // Longitude (decimal degrees)
+#define LOCATION_LAT 50.2346 // Latitude (decimal degrees)
+#define LOCATION_LON 19.2083 // Longitude (decimal degrees)
 #define LOCATION_ALT 278.0   // Altitude in meters
 
 // ==================== Timing Configuration ====================
@@ -46,7 +46,7 @@
 #define RTCM_MAX_MESSAGE_SIZE 512
 
 // ==================== Debug Configuration ====================
-#define ENABLE_HEX_DUMP false   // Enable hex dump of transmitted packets
+#define ENABLE_HEX_DUMP false  // Enable hex dump of transmitted packets
 #define HEX_DUMP_MAX_BYTES 200 // Maximum bytes to display in hex dump
 
 // ==================== OLED Display Configuration ====================

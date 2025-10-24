@@ -755,7 +755,7 @@ void showSplashScreen()
 }
 
 // Show error message
-void showError(const char* title, const char* message)
+void showError(const char *title, const char *message)
 {
   display.clear();
 
@@ -770,13 +770,13 @@ void showError(const char* title, const char* message)
 }
 
 // Show status message during initialization
-void showStatus(const char* message)
+void showStatus(const char *message)
 {
   display.clear();
 
   display.setFont(ArialMT_Plain_10);
   display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(0, 0, "RTCM Transmitter");
+  display.drawString(0, 0, "OSS RTCM Transmitter");
   display.drawString(0, 15, "Initializing...");
   display.drawString(0, 35, message);
 
@@ -800,12 +800,15 @@ void updateStatsDisplay()
 
   // Title
   display.setFont(ArialMT_Plain_10);
-  display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.drawString(64, 0, "RTCM Transmitter");
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+
+  // Top line: Header
+  display.drawString(0, 0, "OSS RTCM Transmitter");
+  display.drawLine(0, 12, 128, 12);
 
   // Status line
   display.setTextAlignment(TEXT_ALIGN_LEFT);
-  const char* stateStr = "UNKNOWN";
+  const char *stateStr = "UNKNOWN";
   if (currentState == STATE_WAITING_FOR_FIRST_RTCM)
     stateStr = "WAITING";
   else if (currentState == STATE_GATHERING)
