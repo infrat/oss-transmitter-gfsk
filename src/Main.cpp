@@ -72,6 +72,30 @@ struct RTCMBufferEntry
 const RTCMBufferEntry rtcmBufferConfig[] = RTCM_BUFFER_CONFIG;
 const uint8_t rtcmBufferConfigSize = sizeof(rtcmBufferConfig) / sizeof(RTCMBufferEntry);
 
+// RTCM message priority structure
+struct RTCMPriorityEntry
+{
+  uint16_t messageType;
+  int priority;
+};
+
+// Parse RTCM priorities from config.h
+const RTCMPriorityEntry rtcmPriorities[] = RTCM_MESSAGE_PRIORITIES;
+const uint8_t rtcmPrioritiesSize = sizeof(rtcmPriorities) / sizeof(RTCMPriorityEntry);
+
+// Function to get message priority (lower number = higher priority)
+int getRTCMPriority(uint16_t messageType)
+{
+  for (uint8_t i = 0; i < rtcmPrioritiesSize; i++)
+  {
+    if (rtcmPriorities[i].messageType == messageType)
+    {
+      return rtcmPriorities[i].priority;
+    }
+  }
+  return 9999; // Unknown message types get lowest priority
+}
+
 // Single RTCM message structure
 struct RTCMMessage
 {
@@ -235,9 +259,11 @@ public:
       messageTypes[i] = rtcmBufferConfig[i].messageType;
       typeBuffers[i].init(rtcmBufferConfig[i].maxMessages);
 
-      Serial.printf("[RTCM] Initialized buffer for type %d (max %d messages)\n",
+      int priority = getRTCMPriority(rtcmBufferConfig[i].messageType);
+      Serial.printf("[RTCM] Initialized buffer for type %d (max %d messages, priority %d)\n",
                     rtcmBufferConfig[i].messageType,
-                    rtcmBufferConfig[i].maxMessages);
+                    rtcmBufferConfig[i].maxMessages,
+                    priority);
     }
   }
 
@@ -268,7 +294,7 @@ public:
     return false;
   }
 
-  // Get all messages sorted by timestamp (chronological order)
+  // Get all messages sorted by priority first, then by timestamp
   uint16_t getAllMessagesSorted(RTCMMessage *output, uint16_t maxOutput)
   {
     // First, collect all messages from all type buffers
@@ -284,12 +310,28 @@ public:
       }
     }
 
-    // Sort by timestamp (bubble sort - good enough for small arrays)
+    // Sort by priority first, then by timestamp (bubble sort - good enough for small arrays)
     for (uint16_t i = 0; i < totalMessages - 1; i++)
     {
       for (uint16_t j = 0; j < totalMessages - i - 1; j++)
       {
-        if (output[j].timestamp > output[j + 1].timestamp)
+        int priority_j = getRTCMPriority(output[j].messageType);
+        int priority_j1 = getRTCMPriority(output[j + 1].messageType);
+        
+        bool shouldSwap = false;
+        
+        // First compare by priority (lower number = higher priority)
+        if (priority_j > priority_j1)
+        {
+          shouldSwap = true;
+        }
+        // If same priority, compare by timestamp (older first)
+        else if (priority_j == priority_j1 && output[j].timestamp > output[j + 1].timestamp)
+        {
+          shouldSwap = true;
+        }
+        
+        if (shouldSwap)
         {
           // Swap
           RTCMMessage temp = output[j];
@@ -970,7 +1012,7 @@ void handleTransmissionState()
       return;
     }
 
-    // Get all messages sorted by timestamp (chronological order)
+    // Get all messages sorted by priority (RTK-optimized order), then by timestamp
     messageCount = rtcmBuffer.getAllMessagesSorted(messagesToSend, maxMessages);
 
     Serial.printf("[TX] Preparing %d RTCM messages for transmission\n", messageCount);
@@ -1004,14 +1046,16 @@ void handleTransmissionState()
       return;
     }
 
-    // Copy all RTCM messages into transmission buffer (in chronological order)
+    // Copy all RTCM messages into transmission buffer (in priority order)
     uint32_t offset = 0;
     for (uint16_t i = 0; i < messageCount; i++)
     {
       memcpy(txPacket + offset, messagesToSend[i].data, messagesToSend[i].length);
-      Serial.printf("[TX] Message %d/%d: type %d, %d bytes, timestamp %lu ms\n",
+      int priority = getRTCMPriority(messagesToSend[i].messageType);
+      Serial.printf("[TX] Message %d/%d: type %d, priority %d, %d bytes, timestamp %lu ms\n",
                     i + 1, messageCount,
                     messagesToSend[i].messageType,
+                    priority,
                     messagesToSend[i].length,
                     messagesToSend[i].timestamp);
       offset += messagesToSend[i].length;
