@@ -336,12 +336,17 @@ public:
     // First, collect all messages from type buffers assigned to this slot
     uint16_t totalMessages = 0;
 
+    Serial.printf("[SLOT] Filtering messages for slot %d:\n", slot);
     for (uint8_t i = 0; i < numTypes; i++)
     {
+      uint8_t count = typeBuffers[i].getCount();
+      Serial.printf("[SLOT]   Type %d: %d messages, assigned to slot %d - %s\n",
+                    messageTypes[i], count, rtcmBufferConfig[i].transmissionSlot,
+                    (rtcmBufferConfig[i].transmissionSlot == slot) ? "MATCH" : "skip");
+
       // Check if this message type belongs to the requested slot
       if (rtcmBufferConfig[i].transmissionSlot == slot)
       {
-        uint8_t count = typeBuffers[i].getCount();
         if (totalMessages + count <= maxOutput)
         {
           uint8_t copied = typeBuffers[i].getAll(output + totalMessages, maxOutput - totalMessages);
@@ -1054,28 +1059,6 @@ void handleTransmissionState()
     Serial.println(F("\n[SLOT] Starting slot-based transmission (4 slots)"));
   }
 
-  // Check if current slot time is up - move to next slot
-  if (millis() - slotStartTime >= SLOT_DURATION && !transmissionStarted)
-  {
-    currentSlot++;
-    if (currentSlot > NUM_TRANSMISSION_SLOTS)
-    {
-      // All slots completed - clear buffers and return to GATHERING
-      Serial.println(F("[SLOT] All transmission slots completed"));
-      Serial.println(F("[TX] Clearing RTCM buffers"));
-      rtcmBuffer.clearAll();
-
-      currentSlot = 1;
-      currentTransmissionSlot = 0; // Reset global for display
-      slotStartTime = 0;
-      enterState(STATE_GATHERING);
-      return;
-    }
-    currentTransmissionSlot = currentSlot; // Update global for display
-    slotStartTime = millis();
-    Serial.printf("[SLOT] Moving to slot %d/%d\n", currentSlot, NUM_TRANSMISSION_SLOTS);
-  }
-
   // Start transmission for current slot
   if (!transmissionStarted)
   {
@@ -1096,13 +1079,33 @@ void handleTransmissionState()
     Serial.printf("[TX] Slot %d/%d: Preparing %d RTCM messages for transmission\n",
                   currentSlot, NUM_TRANSMISSION_SLOTS, messageCount);
 
-    // If no messages for this slot, skip transmission and clean up
+    // If no messages for this slot, skip to next slot
     if (messageCount == 0)
     {
-      Serial.printf("[TX] Slot %d: No messages to transmit, skipping\n", currentSlot);
+      Serial.printf("[TX] Slot %d: No messages to transmit, skipping to next slot\n", currentSlot);
       delete[] messagesToSend;
       messagesToSend = nullptr;
-      // Don't set transmissionStarted, so next iteration will move to next slot
+
+      // Move to next slot immediately
+      currentSlot++;
+      if (currentSlot > NUM_TRANSMISSION_SLOTS)
+      {
+        // All slots completed
+        Serial.println(F("[SLOT] All transmission slots completed"));
+        Serial.println(F("[TX] Clearing RTCM buffers"));
+        rtcmBuffer.clearAll();
+
+        currentSlot = 1;
+        currentTransmissionSlot = 0;
+        slotStartTime = 0;
+        enterState(STATE_GATHERING);
+      }
+      else
+      {
+        currentTransmissionSlot = currentSlot;
+        slotStartTime = millis();
+        Serial.printf("[SLOT] Moving to slot %d/%d\n", currentSlot, NUM_TRANSMISSION_SLOTS);
+      }
       return;
     }
 
@@ -1242,23 +1245,27 @@ void handleTransmissionState()
     }
 
     // Move to next slot after transmission completes
-    // (Don't clear buffers yet - we'll clear them after all slots complete)
-  }
+    currentSlot++;
+    if (currentSlot > NUM_TRANSMISSION_SLOTS)
+    {
+      // All slots completed - clear buffers and return to GATHERING
+      Serial.println(F("[SLOT] All transmission slots completed"));
+      Serial.println(F("[TX] Clearing RTCM buffers"));
+      rtcmBuffer.clearAll();
 
-  // Safety check: if we've exceeded total TRANSMISSION_DURATION, force completion
-  if (millis() - stateStartTime >= TRANSMISSION_DURATION)
-  {
-    Serial.println(F("[SLOT] Transmission duration exceeded, completing cycle"));
-
-    // Clear all buffers after completing all transmissions
-    Serial.println(F("[TX] Clearing RTCM buffers"));
-    rtcmBuffer.clearAll();
-
-    currentSlot = 1;
-    currentTransmissionSlot = 0; // Reset global for display
-    slotStartTime = 0;
-    transmissionStarted = false;
-    enterState(STATE_GATHERING);
+      currentSlot = 1;
+      currentTransmissionSlot = 0;
+      slotStartTime = 0;
+      enterState(STATE_GATHERING);
+      return;
+    }
+    else
+    {
+      // Move to next slot
+      currentTransmissionSlot = currentSlot;
+      slotStartTime = millis();
+      Serial.printf("[SLOT] Moving to slot %d/%d\n", currentSlot, NUM_TRANSMISSION_SLOTS);
+    }
   }
 }
 
