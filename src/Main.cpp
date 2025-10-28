@@ -1116,13 +1116,13 @@ void handleTransmissionState()
 
     Serial.printf("[TX] Slot %d: Total RTCM data: %u bytes\n", slotToTransmit, rtcmDataSize);
 
-    // Always allocate FIXED_PACKET_SIZE (from config.h)
+    // Always allocate RADIO_MAX_PACKET_LENGTH (from config.h)
     if (txPacket != nullptr)
     {
       free(txPacket);
     }
 
-    txPacket = (uint8_t *)malloc(FIXED_PACKET_SIZE);
+    txPacket = (uint8_t *)malloc(RADIO_MAX_PACKET_LENGTH);
 
     if (txPacket == nullptr)
     {
@@ -1134,7 +1134,7 @@ void handleTransmissionState()
     }
 
     // Copy RTCM messages into transmission buffer (in priority order)
-    // Protection: only copy messages that fit within FIXED_PACKET_SIZE
+    // Protection: only copy messages that fit within RADIO_MAX_PACKET_LENGTH
     uint32_t offset = 0;
     uint16_t messagesCopied = 0;
     uint16_t messagesDropped = 0;
@@ -1142,7 +1142,7 @@ void handleTransmissionState()
     for (uint16_t i = 0; i < messageCount; i++)
     {
       // Check if this message would fit in the remaining buffer space
-      if (offset + messagesToSend[i].length <= FIXED_PACKET_SIZE)
+      if (offset + messagesToSend[i].length <= RADIO_MAX_PACKET_LENGTH)
       {
         memcpy(txPacket + offset, messagesToSend[i].data, messagesToSend[i].length);
         int priority = getRTCMPriority(messagesToSend[i].messageType);
@@ -1177,17 +1177,17 @@ void handleTransmissionState()
     // Track outgoing messages for display statistics (only actually transmitted messages)
     rtcmTxCurrentSecond += messagesCopied;
 
-    // Add padding to reach exactly FIXED_PACKET_SIZE
+    // Add padding to reach exactly RADIO_MAX_PACKET_LENGTH
     // Use offset (actual copied data) instead of rtcmDataSize
     uint32_t actualDataSize = offset;
-    uint32_t paddingSize = FIXED_PACKET_SIZE - actualDataSize;
+    uint32_t paddingSize = RADIO_MAX_PACKET_LENGTH - actualDataSize;
     if (paddingSize > 0)
     {
       memset(txPacket + offset, PADDING_BYTE, paddingSize); // Padding from config.h
       Serial.printf("[TX] Added %u bytes of padding (0x%02X)\n", paddingSize, PADDING_BYTE);
     }
 
-    totalLength = FIXED_PACKET_SIZE; // Always fixed size from config
+    totalLength = RADIO_MAX_PACKET_LENGTH; // Always fixed size from config
     remLength = totalLength;
 
     Serial.printf("[TX] Starting transmission of %d bytes (RTCM: %u, Padding: %u)\n",
