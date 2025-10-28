@@ -41,6 +41,8 @@ SystemState currentState = STATE_INIT;
 unsigned long stateStartTime = 0;
 unsigned long lastGGASendTime = 0;
 bool firstRTCMReceived = false;
+uint8_t currentTransmissionSlot = 0; // Current transmission slot (0 = not in transmission, 1-4 = active slot)
+uint8_t nextSlotToTransmit = 1;      // Next slot to transmit (cycles 1->2->3->4->1...)
 
 // ==================== RTCM BUFFER ====================
 
@@ -49,6 +51,7 @@ struct RTCMBufferEntry
 {
   uint16_t messageType;
   uint8_t maxMessages;
+  uint8_t transmissionSlot; // 1-4: which transmission slot to use
 };
 
 // Parse configuration from config.h
@@ -243,10 +246,11 @@ public:
       typeBuffers[i].init(rtcmBufferConfig[i].maxMessages);
 
       int priority = getRTCMPriority(rtcmBufferConfig[i].messageType);
-      Serial.printf("[RTCM] Initialized buffer for type %d (max %d messages, priority %d)\n",
+      Serial.printf("[RTCM] Initialized buffer for type %d (max %d messages, priority %d, slot %d)\n",
                     rtcmBufferConfig[i].messageType,
                     rtcmBufferConfig[i].maxMessages,
-                    priority);
+                    priority,
+                    rtcmBufferConfig[i].transmissionSlot);
     }
   }
 
@@ -327,12 +331,82 @@ public:
     return totalMessages;
   }
 
+  // Get messages for specific transmission slot, sorted by priority and timestamp
+  uint16_t getMessagesForSlot(uint8_t slot, RTCMMessage *output, uint16_t maxOutput)
+  {
+    // First, collect all messages from type buffers assigned to this slot
+    uint16_t totalMessages = 0;
+
+    Serial.printf("[SLOT] Filtering messages for slot %d:\n", slot);
+    for (uint8_t i = 0; i < numTypes; i++)
+    {
+      uint8_t count = typeBuffers[i].getCount();
+      Serial.printf("[SLOT]   Type %d: %d messages, assigned to slot %d - %s\n",
+                    messageTypes[i], count, rtcmBufferConfig[i].transmissionSlot,
+                    (rtcmBufferConfig[i].transmissionSlot == slot) ? "MATCH" : "skip");
+
+      // Check if this message type belongs to the requested slot
+      if (rtcmBufferConfig[i].transmissionSlot == slot)
+      {
+        if (totalMessages + count <= maxOutput)
+        {
+          uint8_t copied = typeBuffers[i].getAll(output + totalMessages, maxOutput - totalMessages);
+          totalMessages += copied;
+        }
+      }
+    }
+
+    // Sort by priority first, then by timestamp
+    for (uint16_t i = 0; i < totalMessages - 1; i++)
+    {
+      for (uint16_t j = 0; j < totalMessages - i - 1; j++)
+      {
+        int priority_j = getRTCMPriority(output[j].messageType);
+        int priority_j1 = getRTCMPriority(output[j + 1].messageType);
+
+        bool shouldSwap = false;
+
+        if (priority_j > priority_j1)
+        {
+          shouldSwap = true;
+        }
+        else if (priority_j == priority_j1 && output[j].timestamp > output[j + 1].timestamp)
+        {
+          shouldSwap = true;
+        }
+
+        if (shouldSwap)
+        {
+          RTCMMessage temp = output[j];
+          output[j] = output[j + 1];
+          output[j + 1] = temp;
+        }
+      }
+    }
+
+    return totalMessages;
+  }
+
   // Clear all buffers
   void clearAll()
   {
     for (uint8_t i = 0; i < numTypes; i++)
     {
       typeBuffers[i].clear();
+    }
+  }
+
+  // Clear buffers for specific transmission slot
+  void clearSlot(uint8_t slot)
+  {
+    Serial.printf("[RTCM] Clearing buffers for slot %d\n", slot);
+    for (uint8_t i = 0; i < numTypes; i++)
+    {
+      if (rtcmBufferConfig[i].transmissionSlot == slot)
+      {
+        Serial.printf("[RTCM]   Clearing type %d\n", messageTypes[i]);
+        typeBuffers[i].clear();
+      }
     }
   }
 
@@ -833,15 +907,22 @@ void updateStatsDisplay()
 
   // Status line
   display.setTextAlignment(TEXT_ALIGN_LEFT);
-  const char *stateStr = "UNKNOWN";
+  char stateStr[16];
   if (currentState == STATE_WAITING_FOR_FIRST_RTCM)
-    stateStr = "WAITING";
+    snprintf(stateStr, sizeof(stateStr), "WAITING");
   else if (currentState == STATE_GATHERING)
-    stateStr = "GATHERING";
+    snprintf(stateStr, sizeof(stateStr), "GATHERING");
   else if (currentState == STATE_TRANSMISSION)
-    stateStr = "TRANSMIT";
+  {
+    if (currentTransmissionSlot > 0)
+      snprintf(stateStr, sizeof(stateStr), "TX S%d/%d", currentTransmissionSlot, NUM_TRANSMISSION_SLOTS);
+    else
+      snprintf(stateStr, sizeof(stateStr), "TRANSMIT");
+  }
   else if (currentState == STATE_ERROR)
-    stateStr = "ERROR";
+    snprintf(stateStr, sizeof(stateStr), "ERROR");
+  else
+    snprintf(stateStr, sizeof(stateStr), "UNKNOWN");
 
   display.drawString(0, 15, "Status:");
   display.setTextAlignment(TEXT_ALIGN_RIGHT);
@@ -923,10 +1004,10 @@ void enterState(SystemState newState)
     Serial.println(F("\n>>> STATE: WAITING FOR FIRST RTCM"));
     break;
   case STATE_GATHERING:
-    Serial.println(F("\n>>> STATE: GATHERING (2s)"));
+    Serial.printf("\n>>> STATE: GATHERING (next slot: %d)\n", nextSlotToTransmit);
     break;
   case STATE_TRANSMISSION:
-    Serial.println(F("\n>>> STATE: TRANSMISSION (1s)"));
+    Serial.printf("\n>>> STATE: TRANSMISSION (slot %d)\n", nextSlotToTransmit);
     break;
   case STATE_ERROR:
     Serial.println(F("\n>>> STATE: ERROR"));
@@ -981,9 +1062,15 @@ void handleTransmissionState()
   static RTCMMessage *messagesToSend = nullptr;
   static uint16_t messageCount = 0;
 
-  // Start transmission at the beginning of this state (ALWAYS transmit, even if buffer empty)
+  // Start transmission for the scheduled slot
   if (!transmissionStarted)
   {
+    // Use the global nextSlotToTransmit to determine which slot to transmit
+    uint8_t slotToTransmit = nextSlotToTransmit;
+    currentTransmissionSlot = slotToTransmit; // Update for display
+
+    Serial.printf("\n[SLOT] Transmitting slot %d/%d\n", slotToTransmit, NUM_TRANSMISSION_SLOTS);
+
     // Allocate temporary array for sorted messages (max 50 messages should be enough)
     const uint16_t maxMessages = 50;
     messagesToSend = new RTCMMessage[maxMessages];
@@ -995,13 +1082,30 @@ void handleTransmissionState()
       return;
     }
 
-    // Get all messages sorted by priority (RTK-optimized order), then by timestamp
-    messageCount = rtcmBuffer.getAllMessagesSorted(messagesToSend, maxMessages);
+    // Get messages for this slot
+    messageCount = rtcmBuffer.getMessagesForSlot(slotToTransmit, messagesToSend, maxMessages);
 
-    Serial.printf("[TX] Preparing %d RTCM messages for transmission\n", messageCount);
+    Serial.printf("[TX] Slot %d: Preparing %d RTCM messages for transmission\n",
+                  slotToTransmit, messageCount);
 
-    // Track outgoing messages for display statistics
-    rtcmTxCurrentSecond += messageCount;
+    // If no messages for this slot, skip transmission and go back to GATHERING
+    if (messageCount == 0)
+    {
+      Serial.printf("[TX] Slot %d: No messages to transmit, skipping\n", slotToTransmit);
+      delete[] messagesToSend;
+      messagesToSend = nullptr;
+
+      // Move to next slot
+      nextSlotToTransmit++;
+      if (nextSlotToTransmit > NUM_TRANSMISSION_SLOTS)
+      {
+        nextSlotToTransmit = 1;
+      }
+
+      currentTransmissionSlot = 0;
+      enterState(STATE_GATHERING);
+      return;
+    }
 
     // Calculate total RTCM data size
     uint32_t rtcmDataSize = 0;
@@ -1010,15 +1114,15 @@ void handleTransmissionState()
       rtcmDataSize += messagesToSend[i].length;
     }
 
-    Serial.printf("[TX] Total RTCM data: %u bytes\n", rtcmDataSize);
+    Serial.printf("[TX] Slot %d: Total RTCM data: %u bytes\n", slotToTransmit, rtcmDataSize);
 
-    // Always allocate FIXED_PACKET_SIZE (from config.h)
+    // Always allocate RADIO_MAX_PACKET_LENGTH (from config.h)
     if (txPacket != nullptr)
     {
       free(txPacket);
     }
 
-    txPacket = (uint8_t *)malloc(FIXED_PACKET_SIZE);
+    txPacket = (uint8_t *)malloc(RADIO_MAX_PACKET_LENGTH);
 
     if (txPacket == nullptr)
     {
@@ -1029,34 +1133,65 @@ void handleTransmissionState()
       return;
     }
 
-    // Copy all RTCM messages into transmission buffer (in priority order)
+    // Copy RTCM messages into transmission buffer (in priority order)
+    // Protection: only copy messages that fit within RADIO_MAX_PACKET_LENGTH
     uint32_t offset = 0;
+    uint16_t messagesCopied = 0;
+    uint16_t messagesDropped = 0;
+
     for (uint16_t i = 0; i < messageCount; i++)
     {
-      memcpy(txPacket + offset, messagesToSend[i].data, messagesToSend[i].length);
-      int priority = getRTCMPriority(messagesToSend[i].messageType);
-      Serial.printf("[TX] Message %d/%d: type %d, priority %d, %d bytes, timestamp %lu ms\n",
-                    i + 1, messageCount,
-                    messagesToSend[i].messageType,
-                    priority,
-                    messagesToSend[i].length,
-                    messagesToSend[i].timestamp);
-      offset += messagesToSend[i].length;
+      // Check if this message would fit in the remaining buffer space
+      if (offset + messagesToSend[i].length <= RADIO_MAX_PACKET_LENGTH)
+      {
+        memcpy(txPacket + offset, messagesToSend[i].data, messagesToSend[i].length);
+        int priority = getRTCMPriority(messagesToSend[i].messageType);
+        Serial.printf("[TX] Message %d/%d: type %d, priority %d, %d bytes, timestamp %lu ms\n",
+                      messagesCopied + 1, messageCount,
+                      messagesToSend[i].messageType,
+                      priority,
+                      messagesToSend[i].length,
+                      messagesToSend[i].timestamp);
+        offset += messagesToSend[i].length;
+        messagesCopied++;
+      }
+      else
+      {
+        // Buffer full - drop remaining messages (lower priority ones)
+        int priority = getRTCMPriority(messagesToSend[i].messageType);
+        Serial.printf("[TX] WARNING: Dropped message %d: type %d, priority %d, %d bytes (buffer full)\n",
+                      i + 1,
+                      messagesToSend[i].messageType,
+                      priority,
+                      messagesToSend[i].length);
+        messagesDropped++;
+      }
     }
 
-    // Add padding to reach exactly FIXED_PACKET_SIZE
-    uint32_t paddingSize = FIXED_PACKET_SIZE - rtcmDataSize;
+    if (messagesDropped > 0)
+    {
+      Serial.printf("[TX] Buffer overflow protection: %d messages copied, %d messages dropped\n",
+                    messagesCopied, messagesDropped);
+    }
+
+    // Track outgoing messages for display statistics (only actually transmitted messages)
+    rtcmTxCurrentSecond += messagesCopied;
+
+    // Add padding to reach exactly RADIO_MAX_PACKET_LENGTH
+    // Use offset (actual copied data) instead of rtcmDataSize
+    uint32_t actualDataSize = offset;
+    uint32_t paddingSize = RADIO_MAX_PACKET_LENGTH - actualDataSize;
     if (paddingSize > 0)
     {
       memset(txPacket + offset, PADDING_BYTE, paddingSize); // Padding from config.h
       Serial.printf("[TX] Added %u bytes of padding (0x%02X)\n", paddingSize, PADDING_BYTE);
     }
 
-    totalLength = FIXED_PACKET_SIZE; // Always fixed size from config
+    totalLength = RADIO_MAX_PACKET_LENGTH; // Always fixed size from config
     remLength = totalLength;
 
     Serial.printf("[TX] Starting transmission of %d bytes (RTCM: %u, Padding: %u)\n",
-                  totalLength, rtcmDataSize, paddingSize);
+                  totalLength, actualDataSize, paddingSize);
 
 // Display hex dump of transmitted data if enabled
 #ifdef ENABLE_HEX_DUMP
@@ -1087,22 +1222,17 @@ void handleTransmissionState()
     transmissionStarted = false;
     remLength = totalLength;
 
+    uint8_t completedSlot = nextSlotToTransmit;
+
     if (transmissionState == RADIOLIB_ERR_NONE)
     {
-      Serial.println(F("[TX] Transmission finished!"));
+      Serial.printf("[TX] Slot %d: Transmission finished successfully!\n", completedSlot);
       packetsTransmitted++;
-
-      // Clear all buffers after successful transmission
-      Serial.println(F("[TX] Clearing RTCM buffers"));
-      rtcmBuffer.clearAll();
     }
     else
     {
-      Serial.printf("[TX] Transmission failed, code %d\n", transmissionState);
+      Serial.printf("[TX] Slot %d: Transmission failed, code %d\n", completedSlot, transmissionState);
       transmissionErrors++;
-
-      // Also clear buffers on error (fresh start next cycle)
-      rtcmBuffer.clearAll();
     }
 
     radio.standby();
@@ -1113,16 +1243,22 @@ void handleTransmissionState()
       free(txPacket);
       txPacket = nullptr;
     }
-  }
 
-  // Check if transmission time is up
-  if (millis() - stateStartTime >= TRANSMISSION_DURATION)
-  {
-    // If still transmitting, let it finish
-    if (!transmissionStarted)
+    // Clear buffers only for this slot
+    rtcmBuffer.clearSlot(completedSlot);
+
+    // Move to next slot (cycles 1->2->3->4->1...)
+    nextSlotToTransmit++;
+    if (nextSlotToTransmit > NUM_TRANSMISSION_SLOTS)
     {
-      enterState(STATE_GATHERING);
+      nextSlotToTransmit = 1;
     }
+
+    Serial.printf("[SLOT] Next slot to transmit: %d\n", nextSlotToTransmit);
+
+    // Reset display variable and return to GATHERING
+    currentTransmissionSlot = 0;
+    enterState(STATE_GATHERING);
   }
 }
 
@@ -1218,8 +1354,9 @@ void setup()
   setupRadio();
 
   Serial.println(F("\n[INFO] System initialized successfully!"));
-  Serial.printf("[INFO] Cycle: %ds GATHERING + %ds TRANSMISSION\n",
-                GATHERING_DURATION / 1000, TRANSMISSION_DURATION / 1000);
+  Serial.printf("[INFO] Cycle per slot: %dms GATHERING + ~%dms TRANSMISSION\n",
+                GATHERING_DURATION, TRANSMISSION_DURATION);
+  Serial.printf("[INFO] %d transmission slots cycling: 1 -> 2 -> 3 -> 4 -> 1...\n", NUM_TRANSMISSION_SLOTS);
   Serial.printf("[INFO] GGA send interval: %ds\n", GGA_SEND_INTERVAL / 1000);
   Serial.println();
   Serial.println(F("[INFO] Waiting for first RTCM message before starting transmission cycles..."));

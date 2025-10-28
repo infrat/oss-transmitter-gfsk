@@ -13,13 +13,14 @@
 
 // ==================== RADIO CONFIGURATION ====================
 
-#define RADIO_FREQUENCY 433.0                   // MHz
-#define RADIO_BITRATE 9.6                       // kbps
-#define RADIO_FREQ_DEVIATION 10.0               // kHz frequency deviation
-#define RADIO_RX_BANDWIDTH 39.0                 // kHz
-#define RADIO_OUTPUT_POWER 20  
-#define RADIO_PREAMBLE_LENGTH 48                // bits
+#define RADIO_FREQUENCY 433.0     // MHz
+#define RADIO_BITRATE 9.6         // kbps
+#define RADIO_FREQ_DEVIATION 10.0 // kHz frequency deviation
+#define RADIO_RX_BANDWIDTH 39.0   // kHz
+#define RADIO_OUTPUT_POWER 20
+#define RADIO_PREAMBLE_LENGTH 16                // bits
 #define RADIO_DATA_SHAPING RADIOLIB_SHAPING_0_3 // bits
+#define RADIO_MAX_PACKET_LENGTH 800             // Always transmit exactly 2000 bytes
 
 // ==================== WiFi Configuration ====================
 
@@ -36,28 +37,33 @@
 #define LOCATION_ALT 278.0   // Altitude in meters
 
 // ==================== Timing Configuration ====================
-#define GGA_SEND_INTERVAL 10000    // Send GGA every 10 seconds (ms)
-#define GATHERING_DURATION 1000    // 1 second for data gathering (ms)
-#define TRANSMISSION_DURATION 1500 // 1 second for radio transmission (ms)
+#define GGA_SEND_INTERVAL 10000   // Send GGA every 10 seconds (ms)
+#define GATHERING_DURATION 100    // 1 second for data gathering (ms)
+#define TRANSMISSION_DURATION 500 // 1.5 seconds for radio transmission (ms)
+
+// Transmission slot configuration (4 slots within TRANSMISSION_DURATION)
+#define NUM_TRANSMISSION_SLOTS 3
+#define SLOT_DURATION (TRANSMISSION_DURATION / NUM_TRANSMISSION_SLOTS) // 375ms per slot
 
 // ==================== Radio Transmission Configuration ====================
-#define FIXED_PACKET_SIZE 2000 // Always transmit exactly 2000 bytes
-#define PADDING_BYTE 0xFF      // Byte used for padding (0xFF or 0x00)
+#define PADDING_BYTE 0xFF // Byte used for padding (0xFF or 0x00)
 
 // ==================== RTCM Configuration ====================
 // RTCM message types to filter and buffer
-// Format: {messageType, maxMessages}
-#define RTCM_BUFFER_CONFIG {                               \
-    {1019, 1}, /* GPS ephemeris - keep 2 messages */       \
-    {1020, 1}, /* GLONASS ephemeris - keep 2 messages */   \
-    {1075, 1}, /* GPS MSM5 - keep 3 messages */            \
-    {1085, 1}, /* GLONASS MSM5 - keep 3 messages */        \
-    {1095, 1}, /* Galileo MSM5 - keep 3 messages */        \
-    {1125, 2}, /* BeiDou MSM5 - keep 2 messages */         \
-    {1005, 1}, /* Station ARP - keep 1 message (static) */ \
-    {1007, 1}, /* Antenna descriptor - keep 1 message */   \
-    {1033, 1}, /* Receiver descriptor - keep 1 message */  \
-    {1230, 1}  /* GLONASS biases - keep 2 messages */      \
+// Format: {messageType, maxMessages, transmissionSlot}
+// transmissionSlot: 1-4 (which of 4 transmission slots to use)
+#define RTCM_BUFFER_CONFIG {                                    \
+    {1005, 1, 1}, /* Station ARP - slot 1 (highest priority) */ \
+    {1007, 1, 1}, /* Antenna descriptor - slot 1 */             \
+    {1033, 1, 1}, /* Receiver descriptor - slot 1 */            \
+    {1230, 1, 1}, /* GLONASS biases - slot 1 */                 \
+    {1075, 1, 1}, /* GPS MSM5 - slot 2 */                       \
+    {1075, 1, 2}, /* GPS MSM5 - slot 2 */                       \
+    {1085, 1, 3}, /* GLONASS MSM5 - slot 2 */                   \
+    {1095, 1, 3}, /* Galileo MSM5 - slot 3 */                   \
+    {1125, 2, 2}, /* BeiDou MSM5 - slot 3 */                    \
+    {1019, 1, 1}, /* GPS ephemeris - slot 4 */                  \
+    {1020, 1, 1}  /* GLONASS ephemeris - slot 4 */              \
 }
 
 // RTCM message priorities for RTK Fix - lower number = higher priority
