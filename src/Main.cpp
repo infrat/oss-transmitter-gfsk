@@ -1266,6 +1266,7 @@ void handleTransmissionState()
 
 void setupRadio()
 {
+#if RADIO_MODULATION == MODULATION_FSK
   Serial.print(F("[SX1276] Setting FSK parameters ... "));
 
   radio.setBitRate(RADIO_BITRATE);
@@ -1278,6 +1279,33 @@ void setupRadio()
   // Set sync word for packet synchronization
   radio.setFifoEmptyAction(fifoAdd);
   radio.fixedPacketLengthMode(0);
+
+  Serial.println(F("success!"));
+  Serial.printf("[FSK] Bitrate: %.1f kbps, Deviation: %.1f kHz, BW: %.1f kHz\n",
+                RADIO_BITRATE, RADIO_FREQ_DEVIATION, RADIO_RX_BANDWIDTH);
+
+#elif RADIO_MODULATION == MODULATION_LORA
+  Serial.print(F("[SX1276] Setting LoRa parameters ... "));
+
+  radio.setSpreadingFactor(LORA_SPREADING_FACTOR);
+  radio.setBandwidth(LORA_BANDWIDTH);
+  radio.setCodingRate(LORA_CODING_RATE);
+  radio.setOutputPower(RADIO_OUTPUT_POWER);
+  radio.setSyncWord(LORA_SYNC_WORD);
+  radio.setPreambleLength(LORA_PREAMBLE_LENGTH);
+
+  if (LORA_CRC_ENABLED) {
+    radio.setCRC(true);
+  } else {
+    radio.setCRC(false);
+  }
+
+  Serial.println(F("success!"));
+  Serial.printf("[LoRa] SF: %d, BW: %.1f kHz, CR: 4/%d, SyncWord: 0x%02X\n",
+                LORA_SPREADING_FACTOR, LORA_BANDWIDTH, LORA_CODING_RATE, LORA_SYNC_WORD);
+#else
+  #error "Invalid RADIO_MODULATION setting. Use MODULATION_FSK or MODULATION_LORA"
+#endif
 }
 
 void setup()
@@ -1286,7 +1314,11 @@ void setup()
   delay(1000);
 
   Serial.println(F("\n========================================"));
+#if RADIO_MODULATION == MODULATION_FSK
   Serial.println(F("  NTRIP + FSK Radio Transmitter"));
+#elif RADIO_MODULATION == MODULATION_LORA
+  Serial.println(F("  NTRIP + LoRa Radio Transmitter"));
+#endif
   Serial.println(F("========================================"));
 
   // Initialize OLED display
@@ -1332,8 +1364,14 @@ void setup()
 
   // Initialize radio
   showStatus("Initializing Radio...");
-  Serial.print(F("[SX1276] Initializing ... "));
+
+#if RADIO_MODULATION == MODULATION_FSK
+  Serial.print(F("[SX1276] Initializing FSK mode ... "));
   int state = radio.beginFSK(RADIO_FREQUENCY);
+#elif RADIO_MODULATION == MODULATION_LORA
+  Serial.print(F("[SX1276] Initializing LoRa mode ... "));
+  int state = radio.begin(RADIO_FREQUENCY);
+#endif
 
   if (state == RADIOLIB_ERR_NONE)
   {
@@ -1350,7 +1388,7 @@ void setup()
     }
   }
 
-  // Configure radio
+  // Configure radio parameters
   setupRadio();
 
   Serial.println(F("\n[INFO] System initialized successfully!"));

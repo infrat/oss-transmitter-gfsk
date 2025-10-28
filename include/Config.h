@@ -13,14 +13,38 @@
 
 // ==================== RADIO CONFIGURATION ====================
 
+// Modulation mode selection
+enum ModulationMode {
+  MODULATION_FSK = 0,
+  MODULATION_LORA = 1
+};
+
+// Select modulation mode: MODULATION_FSK or MODULATION_LORA
+#define RADIO_MODULATION MODULATION_FSK
+
+// Common radio parameters (both FSK and LoRa)
 #define RADIO_FREQUENCY 433.0     // MHz
+#define RADIO_OUTPUT_POWER 20     // dBm
+#define RADIO_MAX_PACKET_LENGTH 800 // Maximum packet length in bytes
+
+// ==================== FSK/GFSK CONFIGURATION ====================
+// These parameters are used when RADIO_MODULATION = MODULATION_FSK
+
 #define RADIO_BITRATE 9.6         // kbps
 #define RADIO_FREQ_DEVIATION 10.0 // kHz frequency deviation
 #define RADIO_RX_BANDWIDTH 39.0   // kHz
-#define RADIO_OUTPUT_POWER 20
 #define RADIO_PREAMBLE_LENGTH 16                // bits
-#define RADIO_DATA_SHAPING RADIOLIB_SHAPING_0_3 // bits
-#define RADIO_MAX_PACKET_LENGTH 800             // Always transmit exactly 2000 bytes
+#define RADIO_DATA_SHAPING RADIOLIB_SHAPING_0_3 // Gaussian filter BT=0.3
+
+// ==================== LoRa CONFIGURATION ====================
+// These parameters are used when RADIO_MODULATION = MODULATION_LORA
+
+#define LORA_SPREADING_FACTOR 7   // SF7-SF12 (higher = longer range, lower speed)
+#define LORA_BANDWIDTH 125.0      // kHz (125, 250, 500)
+#define LORA_CODING_RATE 5        // CR 4/5, 4/6, 4/7, 4/8 (5-8)
+#define LORA_SYNC_WORD 0x12       // LoRa sync word (0x12 = private, 0x34 = public/LoRaWAN)
+#define LORA_PREAMBLE_LENGTH 8    // Preamble length in symbols
+#define LORA_CRC_ENABLED true     // Enable CRC
 
 // ==================== WiFi Configuration ====================
 
